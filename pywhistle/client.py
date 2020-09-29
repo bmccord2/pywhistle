@@ -1,3 +1,4 @@
+import datetime
 from aiohttp import ClientSession, client_exceptions
 
 WHISTLE_CONST = {
@@ -9,6 +10,7 @@ WHISTLE_CONST = {
 
 class Client:
 
+    DATEFORMAT_YYYYMMDD = '%Y-%m-%d'
 
     """
     Returns a string: URL(host, endpoint, resource)
@@ -45,15 +47,19 @@ class Client:
             method: str,
             resource: str,
             headers: dict = None,
-            data: dict = None
+            data: dict = None,
+            params: dict = None
             ) -> dict:
         if not headers:
             headers = {}
+        params = dict((k, v) for k, v in params.items() if v is not None) if params else {}
+        print(params)
         async with self._websession.request(
                 method,
                 self.url(config, resource),
                 headers=headers,
-                data=data) as r:
+                data=data,
+                params=params) as r:
             r.raise_for_status()
             return await r.json()
 
@@ -61,12 +67,13 @@ class Client:
     """
     Helper to retrieve a single resource, such as '/pet'
     """
-    async def get_resource(self, config, token, resource):
+    async def get_resource(self, config, token, resource, params=None):
         return await self.request(
                 config,
                 method='get',
                 resource=resource,
-                headers=self.headers(config, token)
+                headers=self.headers(config, token),
+                params=params
                 )
 
 
@@ -154,9 +161,20 @@ class Client:
             activity_goal, minutes_active, minutes_rest,
             calories, distance,
             day_number, excluded, timestamp, updated_at
+        start_date: datetime.datetime
+            Defaults to Jan 1 1970 if end_date is set and start_date is not
+        end_date: datetime.datetime
+            Defaults to current date if start_date is set and end_date is not
     """
-    async def get_dailies(self, pet_id):
-        return await self.get_resource(self._config, self._token, "pets/%s/dailies" % pet_id)
+    async def get_dailies(self, pet_id, start_date=None, end_date=None):
+        if start_date and not end_date:
+            end_date = datetime.datetime.now()
+        elif end_date and not start_date:
+            start_date = datetime.datetime.fromtimestamp(0)
+        start_date = start_date.strftime(self.__class__.DATEFORMAT_YYYYMMDD) if start_date else None
+        end_date = end_date.strftime(self.__class__.DATEFORMAT_YYYYMMDD) if end_date else None
+        return await self.get_resource(self._config, self._token, "pets/%s/dailies" % pet_id,
+                params={'start_date': start_date, 'end_date': end_date})
 
 
     """
